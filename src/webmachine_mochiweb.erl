@@ -24,8 +24,8 @@ start(Options) ->
     {DispatchList, Options1} = get_option(dispatch, Options),
     {ErrorHandler0, Options2} = get_option(error_handler, Options1),
     {EnablePerfLog, Options3} = get_option(enable_perf_logger, Options2),
-    ErrorHandler = 
-        case ErrorHandler0 of 
+    ErrorHandler =
+        case ErrorHandler0 of
             undefined ->
                 webmachine_error_handler;
             EH -> EH
@@ -53,9 +53,18 @@ start(Options) ->
       {undefined, _} -> {?MODULE, Options4};
       {PN, O5} -> {PN, O5}
     end,
-    application:set_env(webmachine, dispatch_list, DispatchList),
+    {UseSysConfigDispatch, Options6} =
+        case get_option(use_sys_config_dispatch,Options5) of
+      {undefined, _} -> {false, Options5};
+      {USCD, O6}     -> {USCD , O6}
+    end,
+    if UseSysConfigDispatch == false ->
+        application:set_env(webmachine, dispatch_list, DispatchList);
+    true ->
+        ignore
+    end,
     application:set_env(webmachine, error_handler, ErrorHandler),
-    mochiweb_http:start([{name, PName}, {loop, fun loop/1} | Options5]).
+    mochiweb_http:start([{name, PName}, {loop, fun loop/1} | Options6]).
 
 stop() ->
     {registered_name, PName} = process_info(self(), registered_name),
@@ -72,7 +81,7 @@ loop(MochiReq) ->
     case webmachine_dispatcher:dispatch(Host, Path, DispatchList) of
         {no_dispatch_match, _UnmatchedHost, _UnmatchedPathTokens} ->
             {ok, ErrorHandler} = application:get_env(webmachine, error_handler),
-            {ErrorHTML,ReqState1} = 
+            {ErrorHTML,ReqState1} =
                 ErrorHandler:render_error(404, Req, {none, none, []}),
             Req1 = {webmachine_request,ReqState1},
             {ok,ReqState2} = Req1:append_to_response_body(ErrorHTML),
@@ -93,10 +102,10 @@ loop(MochiReq) ->
                                               PathTokens,AppRoot,StringPath),
             XReq1 = {webmachine_request,RS1},
             {ok,RS2} = XReq1:set_metadata('resource_module', Mod),
-            try 
+            try
                 webmachine_decision_core:handle_request(Resource, RS2)
             catch
-                error:_ -> 
+                error:_ ->
                     FailReq = {webmachine_request,RS2},
                     {ok,RS3} = FailReq:send_response(500),
                     PostFailReq = {webmachine_request,RS3},
